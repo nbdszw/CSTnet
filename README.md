@@ -51,3 +51,5 @@ pip install -r requirements.txt
 ```
 ./train.sh
 ```
+* You can replace the training dataset/task by modifying `train.sh`.
+* Note the modification of the parameters in `train.sh`.
