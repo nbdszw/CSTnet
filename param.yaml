@@ -19,3 +19,15 @@ n_iter_per_epoch: 500
 n_epoch: 100
 num_workers: 10
 
+# Semantic branch related (Chapter 4)
+use_semantic_branch: False
+semantic_path: ''
+semantic_dim: 0
+shared_dim: 128
+semantic_hidden_dim: 0
+semantic_conf_threshold: 0.9
+semantic_metric: cosine
+semantic_normalize: True
+semantic_loss_weight: 1.0
+semantic_src_weight: 1.0
+semantic_tgt_weight: 1.0
