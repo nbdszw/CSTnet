@@ -58,6 +58,19 @@ def get_parser():
     parser.add_argument('--transfer_loss_weight', type=float, default=1)
     parser.add_argument('--transfer_loss', type=str, default='mmd')
     parser.add_argument('--dis_loss_weight', type=float, default=1)
+
+    # semantic branch related
+    parser.add_argument('--use_semantic_branch', type=str2bool, default=False)
+    parser.add_argument('--semantic_path', type=str, default='')
+    parser.add_argument('--semantic_dim', type=int, default=0)
+    parser.add_argument('--shared_dim', type=int, default=128)
+    parser.add_argument('--semantic_hidden_dim', type=int, default=0)
+    parser.add_argument('--semantic_conf_threshold', type=float, default=0.9)
+    parser.add_argument('--semantic_metric', type=str, default='cosine')
+    parser.add_argument('--semantic_normalize', type=str2bool, default=True)
+    parser.add_argument('--semantic_loss_weight', type=float, default=1.0)
+    parser.add_argument('--semantic_src_weight', type=float, default=1.0)
+    parser.add_argument('--semantic_tgt_weight', type=float, default=1.0)
     return parser
 
 def set_random_seed(seed=0):
@@ -85,7 +98,23 @@ def load_data(args):
 
 def get_model(args):
     model = models.NewTransferNet(
-        args.n_class, transfer_loss=args.transfer_loss, base_net=args.backbone, max_iter=args.max_iter, input_channels=args.num_bands,use_bottleneck=args.use_bottleneck).to(args.device)
+        args.n_class,
+        transfer_loss=args.transfer_loss,
+        base_net=args.backbone,
+        max_iter=args.max_iter,
+        input_channels=args.num_bands,
+        use_bottleneck=args.use_bottleneck,
+        use_semantic_branch=args.use_semantic_branch,
+        semantic_path=args.semantic_path,
+        semantic_dim=args.semantic_dim,
+        shared_dim=args.shared_dim,
+        semantic_hidden_dim=args.semantic_hidden_dim,
+        semantic_conf_threshold=args.semantic_conf_threshold,
+        semantic_metric=args.semantic_metric,
+        semantic_normalize=args.semantic_normalize,
+        semantic_src_weight=args.semantic_src_weight,
+        semantic_tgt_weight=args.semantic_tgt_weight,
+    ).to(args.device)
     return model
 
 def get_optimizer(model, args):
@@ -169,7 +198,10 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
         train_loss_transfer = utils.AverageMeter()
         train_loss_dis = utils.AverageMeter()
         train_loss_total = utils.AverageMeter()
-        # train_loss_class = utils.AverageMeter()
+        train_loss_sem = utils.AverageMeter()
+        train_loss_sem_src = utils.AverageMeter()
+        train_loss_sem_tgt = utils.AverageMeter()
+        train_sem_valid_ratio = utils.AverageMeter()
         model.epoch_based_processing(n_batch)
 
         if max(len_target_loader, len_source_loader) != 0:
@@ -183,8 +215,11 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
                 args.device), label_source.to(args.device)
             data_target = data_target.to(args.device)
 
-            clf_loss, dis_loss, transfer_loss = model(data_source, data_target, label_source)
+            clf_loss, dis_loss, transfer_loss, semantic_metrics = model(data_source, data_target, label_source)
+            sem_loss = semantic_metrics['sem_loss']
             loss = clf_loss + args.transfer_loss_weight * transfer_loss + args.dis_loss_weight * dis_loss
+            if args.use_semantic_branch:
+                loss = loss + args.semantic_loss_weight * sem_loss
 
             optimizer.zero_grad()
             loss.backward()
@@ -196,12 +231,16 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
             train_loss_transfer.update(transfer_loss.item())
             train_loss_dis.update(dis_loss.item())
             # train_loss_class.update(class_loss.item())
+            train_loss_sem.update(sem_loss.item())
+            train_loss_sem_src.update(semantic_metrics['sem_src_loss'].item())
+            train_loss_sem_tgt.update(semantic_metrics['sem_tgt_loss'].item())
+            train_sem_valid_ratio.update(semantic_metrics['sem_valid_ratio'].item())
             train_loss_total.update(loss.item())
 
         log.append([train_loss_clf.avg, train_loss_transfer.avg, train_loss_total.avg])
 
-        info = 'Epoch: [{:2d}/{}], cls_loss: {:.4f}, transfer_loss: {:.4f}, dis_loss: {:.4f}, total_Loss: {:.4f}'.format(
-            e, args.n_epoch, train_loss_clf.avg, train_loss_transfer.avg, train_loss_dis.avg,train_loss_total.avg)
+        info = 'Epoch: [{:2d}/{}], cls_loss: {:.4f}, transfer_loss: {:.4f}, dis_loss: {:.4f}, sem_loss: {:.4f}, sem_src: {:.4f}, sem_tgt: {:.4f}, sem_ratio: {:.4f}, total_Loss: {:.4f}'.format(
+            e, args.n_epoch, train_loss_clf.avg, train_loss_transfer.avg, train_loss_dis.avg, train_loss_sem.avg, train_loss_sem_src.avg, train_loss_sem_tgt.avg, train_sem_valid_ratio.avg, train_loss_total.avg)
         # Test
         stop += 1
         test_acc, test_loss, per_class_acc, oa, aa, kappa, all_features, all_targets = test(model, target_test_loader, args)
