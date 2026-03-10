@@ -208,8 +208,8 @@ class NewTransferNet(nn.Module):
         x_IN_1, x_1, x_style_1a, \
         x_IN_2, x_2, x_style_2a, \
         x_IN_3, x_3, x_style_3a = self.base_network(x)
-        x = self.bottleneck_layer(x_4)
-        clf = self.classifier_layer(x)
+        feat = self.bottleneck_layer(x_4) if self.use_bottleneck else x_4
+        clf = self.classifier_layer(feat)
         return clf
 
     def get_features(self, x):
@@ -217,7 +217,7 @@ class NewTransferNet(nn.Module):
         x_IN_1, x_1, x_style_1a, \
         x_IN_2, x_2, x_style_2a, \
         x_IN_3, x_3, x_style_3a = self.base_network(x)
-        return self.bottleneck_layer(x_4)
+        return self.bottleneck_layer(x_4) if self.use_bottleneck else x_4
 
     def epoch_based_processing(self, *args, **kwargs):
         if self.transfer_loss == 'daan':

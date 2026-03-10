@@ -89,3 +89,19 @@ pip install -r requirements.txt
 ```
 * You can replace the training dataset/task by modifying `train.sh`.
 * Note the modification of the parameters in `train.sh`.
+
+## Chapter 4 Semantic Prior Usage
+
+This repo supports an optional semantic branch for Chapter 4.
+
+- Detailed semantic prior file specification: `docs/semantic_priors.md`
+- Suggested storage location: `semantic_priors/`
+
+Quick example:
+```bash
+python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
+  --use_semantic_branch True \
+  --semantic_path ./semantic_priors/Houston_semantic.npy
+```
+
+If `--semantic_path` is empty or file missing, code uses one-hot semantic priors as fallback.

@@ -237,7 +237,16 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
             train_sem_valid_ratio.update(semantic_metrics['sem_valid_ratio'].item())
             train_loss_total.update(loss.item())
 
-        log.append([train_loss_clf.avg, train_loss_transfer.avg, train_loss_total.avg])
+        log.append([
+            train_loss_clf.avg,
+            train_loss_transfer.avg,
+            train_loss_dis.avg,
+            train_loss_sem.avg,
+            train_loss_sem_src.avg,
+            train_loss_sem_tgt.avg,
+            train_sem_valid_ratio.avg,
+            train_loss_total.avg,
+        ])
 
         info = 'Epoch: [{:2d}/{}], cls_loss: {:.4f}, transfer_loss: {:.4f}, dis_loss: {:.4f}, sem_loss: {:.4f}, sem_src: {:.4f}, sem_tgt: {:.4f}, sem_ratio: {:.4f}, total_Loss: {:.4f}'.format(
             e, args.n_epoch, train_loss_clf.avg, train_loss_transfer.avg, train_loss_dis.avg, train_loss_sem.avg, train_loss_sem_src.avg, train_loss_sem_tgt.avg, train_sem_valid_ratio.avg, train_loss_total.avg)
