@@ -31,3 +31,5 @@ semantic_normalize: True
 semantic_loss_weight: 1.0
 semantic_src_weight: 1.0
 semantic_tgt_weight: 1.0
+
+semantic_tgt_warmup_epochs: 5

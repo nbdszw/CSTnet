@@ -28,6 +28,7 @@ class NewTransferNet(nn.Module):
         semantic_normalize=True,
         semantic_src_weight=1.0,
         semantic_tgt_weight=1.0,
+        semantic_tgt_warmup_epochs=0,
         **kwargs,
     ):
         super(NewTransferNet, self).__init__()
@@ -62,6 +63,7 @@ class NewTransferNet(nn.Module):
         self.semantic_metric = semantic_metric
         self.semantic_src_weight = semantic_src_weight
         self.semantic_tgt_weight = semantic_tgt_weight
+        self.semantic_tgt_warmup_epochs = semantic_tgt_warmup_epochs
 
         self.visual_projector = None
         self.semantic_projector = None
@@ -83,7 +85,7 @@ class NewTransferNet(nn.Module):
             self.visual_projector = ProjectionHead(feature_dim, shared_dim, hidden_dim=semantic_hidden_dim)
             self.semantic_projector = ProjectionHead(semantic_dim, shared_dim, hidden_dim=semantic_hidden_dim)
 
-    def _semantic_forward(self, source_feat, target_feat, source_label, target_clf):
+    def _semantic_forward(self, source_feat, target_feat, source_label, target_clf, epoch=1):
         zero = torch.tensor(0.0, device=source_feat.device)
         metrics = {
             'sem_loss': zero,
@@ -98,19 +100,33 @@ class NewTransferNet(nn.Module):
         zv_target = self.visual_projector(target_feat)
         zs = self.semantic_projector(self.semantic_bank)
 
-        sem_src_loss = source_semantic_alignment_loss(
-            zv_source,
-            source_label,
-            zs,
-            metric=self.semantic_metric,
-        )
-        sem_tgt_loss, sem_valid_ratio = target_semantic_consistency_loss(
-            zv_target,
-            target_clf,
-            zs,
-            conf_threshold=self.semantic_conf_threshold,
-            metric=self.semantic_metric,
-        )
+        # Ignore background prototype (index 0) in semantic alignment if source labels are foreground-only (>=1)
+        if source_label.min().item() >= 1 and zs.shape[0] > 1:
+            sem_src_loss = source_semantic_alignment_loss(
+                zv_source,
+                source_label - 1,
+                zs[1:],
+                metric=self.semantic_metric,
+            )
+        else:
+            sem_src_loss = source_semantic_alignment_loss(
+                zv_source,
+                source_label,
+                zs,
+                metric=self.semantic_metric,
+            )
+
+        if epoch <= self.semantic_tgt_warmup_epochs:
+            sem_tgt_loss = torch.tensor(0.0, device=source_feat.device)
+            sem_valid_ratio = torch.tensor(0.0, device=source_feat.device)
+        else:
+            sem_tgt_loss, sem_valid_ratio = target_semantic_consistency_loss(
+                zv_target,
+                target_clf,
+                zs,
+                conf_threshold=self.semantic_conf_threshold,
+                metric=self.semantic_metric,
+            )
 
         sem_loss = self.semantic_src_weight * sem_src_loss + self.semantic_tgt_weight * sem_tgt_loss
         metrics['sem_loss'] = sem_loss
@@ -119,7 +135,7 @@ class NewTransferNet(nn.Module):
         metrics['sem_valid_ratio'] = sem_valid_ratio
         return metrics
 
-    def forward(self, source, target, source_label):
+    def forward(self, source, target, source_label, epoch=1):
         source_outputs, \
         source_x_IN_1, source_x_1, source_x_style_1a, \
         source_x_IN_2, source_x_2, source_x_style_2a, \
@@ -177,7 +193,7 @@ class NewTransferNet(nn.Module):
 
         transfer_target = target_prob if self.transfer_loss == 'bnm' else target_feat
         transfer_loss = self.adapt_loss(source_feat, transfer_target, **kwargs)
-        semantic_metrics = self._semantic_forward(source_feat, target_feat, source_label, target_clf)
+        semantic_metrics = self._semantic_forward(source_feat, target_feat, source_label, target_clf, epoch=epoch)
 
         return clf_loss, dis_loss, transfer_loss, semantic_metrics
 

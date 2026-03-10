@@ -71,6 +71,7 @@ def get_parser():
     parser.add_argument('--semantic_loss_weight', type=float, default=1.0)
     parser.add_argument('--semantic_src_weight', type=float, default=1.0)
     parser.add_argument('--semantic_tgt_weight', type=float, default=1.0)
+    parser.add_argument('--semantic_tgt_warmup_epochs', type=int, default=0)
     return parser
 
 def set_random_seed(seed=0):
@@ -114,6 +115,7 @@ def get_model(args):
         semantic_normalize=args.semantic_normalize,
         semantic_src_weight=args.semantic_src_weight,
         semantic_tgt_weight=args.semantic_tgt_weight,
+        semantic_tgt_warmup_epochs=args.semantic_tgt_warmup_epochs,
     ).to(args.device)
     return model
 
@@ -222,7 +224,7 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
                 args.device), label_source.to(args.device)
             data_target = data_target.to(args.device)
 
-            clf_loss, dis_loss, transfer_loss, semantic_metrics = model(data_source, data_target, label_source)
+            clf_loss, dis_loss, transfer_loss, semantic_metrics = model(data_source, data_target, label_source, epoch=e)
             sem_loss = semantic_metrics['sem_loss']
             loss = clf_loss + args.transfer_loss_weight * transfer_loss + args.dis_loss_weight * dis_loss
             if args.use_semantic_branch:
