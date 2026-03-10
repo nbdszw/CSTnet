@@ -67,6 +67,7 @@ def get_parser():
     parser.add_argument('--semantic_hidden_dim', type=int, default=0)
     parser.add_argument('--semantic_conf_threshold', type=float, default=0.9)
     parser.add_argument('--semantic_metric', type=str, default='cosine')
+    parser.add_argument('--semantic_logit_scale', type=float, default=16.0)
     parser.add_argument('--semantic_normalize', type=str2bool, default=True)
     parser.add_argument('--semantic_loss_weight', type=float, default=1.0)
     parser.add_argument('--semantic_src_weight', type=float, default=1.0)
@@ -124,6 +125,7 @@ def get_model(args):
         semantic_hidden_dim=args.semantic_hidden_dim,
         semantic_conf_threshold=args.semantic_conf_threshold,
         semantic_metric=args.semantic_metric,
+        semantic_logit_scale=args.semantic_logit_scale,
         semantic_normalize=args.semantic_normalize,
         semantic_src_weight=args.semantic_src_weight,
         semantic_tgt_weight=args.semantic_tgt_weight,

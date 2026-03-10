@@ -9,11 +9,12 @@ def source_semantic_alignment_loss(
     source_label: torch.Tensor,
     zs_prototypes: torch.Tensor,
     metric: str = "cosine",
+    logit_scale: float = 16.0,
 ) -> torch.Tensor:
     if metric == "cosine":
         zv = l2_normalize(zv_source)
         zs = l2_normalize(zs_prototypes)
-        logits = torch.matmul(zv, zs.t())
+        logits = logit_scale * torch.matmul(zv, zs.t())
         return F.cross_entropy(logits, source_label)
     if metric == "mse":
         target_zs = zs_prototypes[source_label]
@@ -27,6 +28,7 @@ def target_semantic_consistency_loss(
     zs_prototypes: torch.Tensor,
     conf_threshold: float = 0.9,
     metric: str = "cosine",
+    logit_scale: float = 16.0,
 ):
     probs = F.softmax(target_logits, dim=1)
     conf, pseudo = torch.max(probs, dim=1)
@@ -42,7 +44,7 @@ def target_semantic_consistency_loss(
     if metric == "cosine":
         zv = l2_normalize(zv_sel)
         zs = l2_normalize(zs_prototypes)
-        logits = torch.matmul(zv, zs.t())
+        logits = logit_scale * torch.matmul(zv, zs.t())
         loss = F.cross_entropy(logits, pseudo_sel)
     elif metric == "mse":
         target_zs = zs_prototypes[pseudo_sel]
