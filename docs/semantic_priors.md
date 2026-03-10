@@ -126,6 +126,12 @@ python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
 
 建议：先确认 dataloader 的类别编码，再准备 `classes.id` 与原型行顺序。
 
+
+兼容说明（已在代码中实现）：
+- 若训练侧 `num_class` 包含背景类（例如 8），而语义先验只提供前景类别（例如 7 行），
+  加载器会自动在首行补一条全零背景向量，避免直接报错。
+- 建议仍尽量显式对齐类别顺序，自动补齐仅用于兼容常见 HSI 背景类场景。
+
 ---
 
 ## 7. 消融建议

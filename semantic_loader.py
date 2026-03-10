@@ -56,6 +56,20 @@ def load_semantic_embeddings(
 
     if embeddings.ndim != 2:
         raise ValueError(f"Semantic embeddings must be 2D, got shape {tuple(embeddings.shape)}")
+
+    # Compatibility case:
+    # many HSI datasets use label 0 as background/unlabeled.
+    # Training may set num_class to include this background index,
+    # while manual semantic priors are provided only for foreground classes.
+    # If semantic rows are num_class - 1, prepend one background row automatically.
+    if embeddings.shape[0] == num_class - 1:
+        bg = torch.zeros((1, embeddings.shape[1]), dtype=embeddings.dtype)
+        embeddings = torch.cat([bg, embeddings], dim=0)
+        print(
+            f"[semantic_loader] Detected foreground-only semantic bank; prepended background row. "
+            f"Adjusted shape: {tuple(embeddings.shape)}"
+        )
+
     if embeddings.shape[0] != num_class:
         raise ValueError(
             f"Semantic embeddings class count mismatch: expected {num_class}, got {embeddings.shape[0]}"

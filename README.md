@@ -126,3 +126,6 @@ python semantic_priors/scripts/build_manual_semantic_bank.py   --config semantic
 ```bash
 python main.py --config param.yaml --data_dir ./Dataset/Pavia --num_bands 102   --use_semantic_branch True   --semantic_path ./semantic_priors/Pavia/manual_semantic_bank_combined.npy
 ```
+
+
+> 兼容提示：若语义先验只包含前景类（不含背景类0），而训练类别数包含背景类，加载器会自动补齐背景行。
