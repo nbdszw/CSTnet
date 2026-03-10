@@ -13,7 +13,7 @@ semantic_loss_weight=1 # semantic branch total weight
 
 # Semantic branch related (Chapter 4)
 use_semantic_branch=False
-semantic_path=./semantic_priors/${dataset}_semantic.npy
+semantic_path=./semantic_priors/${dataset}/semantic_bank_combined.npy
 semantic_conf_threshold=0.9
 semantic_src_weight=1.0
 semantic_tgt_weight=1.0

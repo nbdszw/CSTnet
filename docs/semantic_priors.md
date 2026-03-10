@@ -1,87 +1,127 @@
-# Semantic Prior File Specification (Chapter 4)
+# Semantic Prior Construction and File Specification (Chapter 4)
 
-This repository supports class-level semantic priors for the optional semantic branch.
+This document explains **how to construct** and **how to use** semantic priors for Chapter 4.
 
-## 1. What is a semantic prior file?
-A semantic prior file stores one semantic embedding vector per class:
+## 1) What is implemented in code
 
-- shape: **[num_class, d_sem]**
-- row index: class index used by training labels
-- each row: one class semantic embedding
+We provide a full pipeline script:
 
-During training, this file is loaded once and used as class semantic prototypes.
+- `semantic_priors/scripts/build_semantic_priors.py`
 
-## 2. Supported file formats
-The loader currently supports:
+It implements:
 
-- `.npy`: `numpy.ndarray` with shape `[num_class, d_sem]`
-- `.pt` / `.pth`:
-  - `torch.Tensor` of shape `[num_class, d_sem]`, or
-  - `dict` with key `"embeddings"` and tensor value `[num_class, d_sem]`
-- `.json`:
-  - `[[...], [...], ...]`, or
-  - `{ "embeddings": [[...], [...], ...] }`
+1. hierarchical text generation
+   - coarse (scene-invariant): \(T_i^{(c)}\)
+   - fine-source/fine-target (scene-aware): \(T_{i,src}^{(f)}, T_{i,tgt}^{(f)}\)
+2. multi-generation with K candidates per class/level
+3. rule-based aggregation with stability threshold \(\rho\)
+4. text embedding + L2 normalization
+5. consistency-based confidence weights
+6. export prototype banks (`.npy`) + metadata (`.json`)
 
-If `semantic_path` is empty or the file does not exist, code falls back to identity one-hot semantic priors (`[num_class, num_class]`).
+The script supports two generation backends:
 
-## 3. Class-order alignment (IMPORTANT)
-Rows must align with the **effective class ids used by model training**.
+- `template` (offline deterministic fallback)
+- `openai` (OpenAI-compatible chat-completions endpoint)
 
-In this codebase:
-- the classifier output dim is `n_class` from dataloader
-- semantic row `i` is treated as class `i`
+---
 
-So semantic rows MUST follow the same class id ordering as your labels in training/testing batches.
+## 2) Input config format
 
-## 4. Minimal examples
+Use a YAML config (example: `semantic_priors/examples/houston_semantic_builder.yaml`).
 
-### 4.1 Save `.npy`
-```python
-import numpy as np
+Required fields:
 
-num_class = 7
-d_sem = 384
-emb = np.random.randn(num_class, d_sem).astype('float32')
-np.save('semantic_priors/Houston_semantic.npy', emb)
-```
+- `dataset`: dataset name
+- `classes`: list of class specs (`id`, `name`, optional `alias`, optional `definition`)
+- `scene_info`: source/target scene metadata with keys:
+  - `sensor`, `season`, `region`, `resolution`, `illumination`
 
-### 4.2 Save `.pt` with dict
-```python
-import torch
+Unknown values should be set to `unknown` (do not hallucinate missing metadata).
 
-num_class = 7
-d_sem = 384
-emb = torch.randn(num_class, d_sem)
-torch.save({'embeddings': emb}, 'semantic_priors/Houston_semantic.pt')
-```
+---
 
-### 4.3 Save `.json`
-```python
-import json
-import numpy as np
+## 3) Run semantic-prior construction
 
-num_class = 7
-d_sem = 128
-emb = np.random.randn(num_class, d_sem).tolist()
-with open('semantic_priors/Houston_semantic.json', 'w', encoding='utf-8') as f:
-    json.dump({'embeddings': emb}, f)
-```
-
-## 5. Recommended workflow
-1. Prepare your class list and fixed class order.
-2. Generate class text descriptions from LLM (offline).
-3. Encode descriptions into vectors with your text encoder (offline).
-4. Save vectors to one of supported formats.
-5. Start training with:
+### 3.1 Offline template backend
 
 ```bash
-python main.py --config param.yaml \
-  --use_semantic_branch True \
-  --semantic_path ./semantic_priors/Houston_semantic.npy
+python semantic_priors/scripts/build_semantic_priors.py \
+  --config semantic_priors/examples/houston_semantic_builder.yaml
 ```
 
-## 6. Ablation suggestions
-- Baseline (Chapter 3): `use_semantic_branch=False`
-- +Source semantic alignment: `use_semantic_branch=True`, `semantic_tgt_weight=0`
-- +Target semantic consistency: `use_semantic_branch=True`, `semantic_src_weight=0`
-- Full Chapter 4: both source and target semantic weights > 0
+### 3.2 OpenAI-compatible backend
+
+1. set `generation.backend: openai` in config
+2. set API key env var (default `OPENAI_API_KEY`)
+3. run the same command
+
+```bash
+export OPENAI_API_KEY="<your_key>"
+python semantic_priors/scripts/build_semantic_priors.py \
+  --config semantic_priors/examples/houston_semantic_builder.yaml
+```
+
+---
+
+## 4) Output files and meanings
+
+Suppose `output_dir: semantic_priors/Houston`, generated files include:
+
+- `semantic_bank_coarse.npy`: \(\mathbf{P}_c\), shape `[C, d_s]`
+- `semantic_bank_fine_src.npy`: \(\mathbf{P}_f^{(src)}\), shape `[C, d_s]`
+- `semantic_bank_fine_tgt.npy`: \(\mathbf{P}_f^{(tgt)}\), shape `[C, d_s]`
+- `semantic_bank_combined.npy`: merged bank for current training code (recommended)
+- `semantic_weights_coarse.npy`: \(w_i^{(c)}\), shape `[C]`
+- `semantic_weights_fine_src.npy`: \(w_i^{(f,src)}\), shape `[C]`
+- `semantic_weights_fine_tgt.npy`: \(w_i^{(f,tgt)}\), shape `[C]`
+- `semantic_metadata.json`: generated texts, confidence, config snapshot
+
+---
+
+## 5) File format constraints for training
+
+Current training code (`semantic_loader.py`) accepts:
+
+- `.npy`: `[num_class, d_sem]`
+- `.pt/.pth`: tensor or dict key `embeddings`
+- `.json`: list or dict key `embeddings`
+
+For Chapter 4 training, you can directly use:
+
+- `semantic_bank_combined.npy`
+
+Example:
+
+```bash
+python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
+  --use_semantic_branch True \
+  --semantic_path ./semantic_priors/Houston/semantic_bank_combined.npy
+```
+
+---
+
+## 6) Class-order alignment (IMPORTANT)
+
+Rows must align with model class ids:
+
+- row `i` corresponds to class id `i`
+- `num_class` must match training dataloader output classes
+
+A mismatch will cause semantic misalignment and degrade training.
+
+---
+
+## 7) Suggested ablations
+
+- baseline (Chapter 3): `use_semantic_branch=False`
+- +source alignment only: `use_semantic_branch=True`, `semantic_tgt_weight=0`
+- +target consistency only: `use_semantic_branch=True`, `semantic_src_weight=0`
+- full Chapter 4: both source and target semantic weights > 0
+
+You can also swap prior variants:
+
+- coarse only: use `semantic_bank_coarse.npy`
+- fine src only: use `semantic_bank_fine_src.npy`
+- fine tgt only: use `semantic_bank_fine_tgt.npy`
+- combined: use `semantic_bank_combined.npy`

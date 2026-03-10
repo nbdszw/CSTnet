@@ -1,0 +1,69 @@
+dataset: Houston
+output_dir: semantic_priors/Houston
+
+classes:
+  - id: 0
+    name: Healthy grass
+    alias: ["grass", "lawn"]
+    definition: "Vegetation-covered surfaces with relatively dense and healthy growth"
+  - id: 1
+    name: Stressed grass
+    alias: ["dry grass", "sparse grass"]
+    definition: "Vegetation with reduced vigor, lower moisture, or stress-related appearance"
+  - id: 2
+    name: Tree
+    alias: ["woody vegetation"]
+    definition: "Tall perennial woody vegetation with canopy structure"
+  - id: 3
+    name: Water
+    alias: ["river", "pond"]
+    definition: "Open surface water body with distinct low-reflectance characteristics"
+  - id: 4
+    name: Residential
+    alias: ["housing area"]
+    definition: "Built-up residential area with buildings, roads and mixed impervious surfaces"
+  - id: 5
+    name: Commercial
+    alias: ["business district"]
+    definition: "Urban commercial area with dense impervious materials and complex structures"
+  - id: 6
+    name: Road
+    alias: ["transport corridor"]
+    definition: "Linear man-made transportation surfaces such as asphalt or concrete roads"
+
+scene_info:
+  src:
+    sensor: unknown
+    season: unknown
+    region: Houston
+    resolution: unknown
+    illumination: unknown
+  tgt:
+    sensor: unknown
+    season: unknown
+    region: Houston
+    resolution: unknown
+    illumination: unknown
+
+generation:
+  backend: template  # template | openai
+  k: 5
+  rho: 0.6
+  max_sentences: 4
+
+# only used when generation.backend=openai
+openai:
+  base_url: https://api.openai.com
+  model: gpt-4o-mini
+  api_key_env: OPENAI_API_KEY
+  temperature: 0.2
+  max_tokens: 260
+
+encoding:
+  dim: 256
+
+confidence:
+  eps: 0.05
+
+output:
+  merge_mode: weighted_mean  # weighted_mean | coarse_only | fine_src_only | fine_tgt_only
