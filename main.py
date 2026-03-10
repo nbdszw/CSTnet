@@ -67,6 +67,7 @@ def get_parser():
     parser.add_argument('--semantic_hidden_dim', type=int, default=0)
     parser.add_argument('--semantic_conf_threshold', type=float, default=0.9)
     parser.add_argument('--semantic_metric', type=str, default='cosine')
+    parser.add_argument('--semantic_logit_scale', type=float, default=16.0)
     parser.add_argument('--semantic_normalize', type=str2bool, default=True)
     parser.add_argument('--semantic_loss_weight', type=float, default=1.0)
     parser.add_argument('--semantic_src_weight', type=float, default=1.0)
@@ -98,6 +99,18 @@ def load_data(args):
     return source_loader, target_train_loader, target_test_loader, n_class
 
 def get_model(args):
+    # If semantic branch contributes zero to total objective, fully disable it to
+    # avoid unnecessary graph construction / optimizer param groups.
+    semantic_branch_active = args.use_semantic_branch and (
+        args.semantic_loss_weight > 0 and (args.semantic_src_weight > 0 or args.semantic_tgt_weight > 0)
+    )
+
+    if args.use_semantic_branch and not semantic_branch_active:
+        print(
+            '[semantic] semantic branch is requested but total semantic objective is zero; '
+            'disabling semantic branch for this run.'
+        )
+
     model = models.NewTransferNet(
         args.n_class,
         transfer_loss=args.transfer_loss,
@@ -105,13 +118,14 @@ def get_model(args):
         max_iter=args.max_iter,
         input_channels=args.num_bands,
         use_bottleneck=args.use_bottleneck,
-        use_semantic_branch=args.use_semantic_branch,
+        use_semantic_branch=semantic_branch_active,
         semantic_path=args.semantic_path,
         semantic_dim=args.semantic_dim,
         shared_dim=args.shared_dim,
         semantic_hidden_dim=args.semantic_hidden_dim,
         semantic_conf_threshold=args.semantic_conf_threshold,
         semantic_metric=args.semantic_metric,
+        semantic_logit_scale=args.semantic_logit_scale,
         semantic_normalize=args.semantic_normalize,
         semantic_src_weight=args.semantic_src_weight,
         semantic_tgt_weight=args.semantic_tgt_weight,
@@ -227,7 +241,7 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
             clf_loss, dis_loss, transfer_loss, semantic_metrics = model(data_source, data_target, label_source, epoch=e)
             sem_loss = semantic_metrics['sem_loss']
             loss = clf_loss + args.transfer_loss_weight * transfer_loss + args.dis_loss_weight * dis_loss
-            if args.use_semantic_branch:
+            if model.use_semantic_branch:
                 loss = loss + args.semantic_loss_weight * sem_loss
 
             optimizer.zero_grad()

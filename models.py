@@ -25,6 +25,7 @@ class NewTransferNet(nn.Module):
         semantic_hidden_dim=0,
         semantic_conf_threshold=0.9,
         semantic_metric='cosine',
+        semantic_logit_scale=16.0,
         semantic_normalize=True,
         semantic_src_weight=1.0,
         semantic_tgt_weight=1.0,
@@ -61,6 +62,7 @@ class NewTransferNet(nn.Module):
         self.use_semantic_branch = use_semantic_branch
         self.semantic_conf_threshold = semantic_conf_threshold
         self.semantic_metric = semantic_metric
+        self.semantic_logit_scale = semantic_logit_scale
         self.semantic_src_weight = semantic_src_weight
         self.semantic_tgt_weight = semantic_tgt_weight
         self.semantic_tgt_warmup_epochs = semantic_tgt_warmup_epochs
@@ -102,18 +104,31 @@ class NewTransferNet(nn.Module):
 
         # Ignore background prototype (index 0) in semantic alignment if source labels are foreground-only (>=1)
         if source_label.min().item() >= 1 and zs.shape[0] > 1:
+            aligned_labels = source_label - 1
+            if aligned_labels.max().item() >= zs[1:].shape[0]:
+                raise ValueError(
+                    f"Source label/prototype mismatch after background shift: "
+                    f"max(label-1)={aligned_labels.max().item()}, prototypes={zs[1:].shape[0]}"
+                )
             sem_src_loss = source_semantic_alignment_loss(
                 zv_source,
-                source_label - 1,
+                aligned_labels,
                 zs[1:],
                 metric=self.semantic_metric,
+                logit_scale=self.semantic_logit_scale,
             )
         else:
+            if source_label.max().item() >= zs.shape[0]:
+                raise ValueError(
+                    f"Source label/prototype mismatch: max(label)={source_label.max().item()}, "
+                    f"prototypes={zs.shape[0]}"
+                )
             sem_src_loss = source_semantic_alignment_loss(
                 zv_source,
                 source_label,
                 zs,
                 metric=self.semantic_metric,
+                logit_scale=self.semantic_logit_scale,
             )
 
         if epoch <= self.semantic_tgt_warmup_epochs:
@@ -126,6 +141,7 @@ class NewTransferNet(nn.Module):
                 zs,
                 conf_threshold=self.semantic_conf_threshold,
                 metric=self.semantic_metric,
+                logit_scale=self.semantic_logit_scale,
             )
 
         sem_loss = self.semantic_src_weight * sem_src_loss + self.semantic_tgt_weight * sem_tgt_loss
