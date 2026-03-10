@@ -141,3 +141,31 @@ python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
 - 仅源域细粒度：`semantic_bank_fine_src.npy`
 - 仅目标域细粒度：`semantic_bank_fine_tgt.npy`
 - 融合：`semantic_bank_combined.npy`
+
+
+## 8. 不接入 LLM 的“手工语义文本”测试（推荐快速验证）
+
+如果你已经有论文表格中的类别语义文本（coarse/fine），可直接使用以下脚本构建语义先验，不需要任何 LLM API：
+
+- 脚本：`semantic_priors/scripts/build_manual_semantic_bank.py`
+- 示例配置：`semantic_priors/examples/pavia_manual_semantics.yaml`
+
+构建命令：
+
+```bash
+python semantic_priors/scripts/build_manual_semantic_bank.py   --config semantic_priors/examples/pavia_manual_semantics.yaml
+```
+
+会输出：
+
+- `semantic_priors/Pavia/manual_semantic_bank_coarse.npy`
+- `semantic_priors/Pavia/manual_semantic_bank_fine.npy`
+- `semantic_priors/Pavia/manual_semantic_bank_combined.npy`（推荐训练时使用）
+
+训练命令示例：
+
+```bash
+python main.py --config param.yaml --data_dir ./Dataset/Pavia --num_bands 102   --use_semantic_branch True   --semantic_path ./semantic_priors/Pavia/manual_semantic_bank_combined.npy
+```
+
+> 注意：请确保 `classes.id` 与训练标签类索引完全一致（第 i 行对应 class id=i）。

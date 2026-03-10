@@ -112,3 +112,17 @@ python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
 
 如果 `--semantic_path` 为空或文件不存在，代码会自动回退到 one-hot 语义先验。
 
+
+
+### 不接入 LLM，直接用论文语义描述做测试
+如果你已经有类别 coarse/fine 语义文本（如 Pavia 表格），可直接构建本地语义先验：
+
+```bash
+python semantic_priors/scripts/build_manual_semantic_bank.py   --config semantic_priors/examples/pavia_manual_semantics.yaml
+```
+
+然后训练时指定：
+
+```bash
+python main.py --config param.yaml --data_dir ./Dataset/Pavia --num_bands 102   --use_semantic_branch True   --semantic_path ./semantic_priors/Pavia/manual_semantic_bank_combined.npy
+```

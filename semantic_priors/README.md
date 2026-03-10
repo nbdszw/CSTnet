@@ -12,3 +12,11 @@ python semantic_priors/scripts/build_semantic_priors.py \
 ```
 
 完整说明请见：`docs/semantic_priors.md`。
+
+
+## 无 LLM 的手工文本构建
+可将论文中的 coarse/fine 类别语义直接写入 YAML（示例：`examples/pavia_manual_semantics.yaml`），然后运行：
+
+```bash
+python semantic_priors/scripts/build_manual_semantic_bank.py   --config semantic_priors/examples/pavia_manual_semantics.yaml
+```
