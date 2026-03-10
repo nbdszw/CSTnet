@@ -89,3 +89,26 @@ pip install -r requirements.txt
 ```
 * You can replace the training dataset/task by modifying `train.sh`.
 * Note the modification of the parameters in `train.sh`.
+
+## Chapter 4 语义先验使用说明
+
+本仓库支持第四章的可选语义分支。
+
+- 语义先验构建与文件规范（中文）：`docs/semantic_priors.md`
+- 语义先验建议存放目录：`semantic_priors/`
+
+### 第一步：构建语义先验
+```bash
+python semantic_priors/scripts/build_semantic_priors.py \
+  --config semantic_priors/examples/houston_semantic_builder.yaml
+```
+
+### 第二步：训练时加载构建结果
+```bash
+python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
+  --use_semantic_branch True \
+  --semantic_path ./semantic_priors/Houston/semantic_bank_combined.npy
+```
+
+如果 `--semantic_path` 为空或文件不存在，代码会自动回退到 one-hot 语义先验。
+
