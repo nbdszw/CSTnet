@@ -89,3 +89,35 @@ pip install -r requirements.txt
 ```
 * You can replace the training dataset/task by modifying `train.sh`.
 * Note the modification of the parameters in `train.sh`.
+
+## Chapter 4 Semantic Prior Usage
+
+This repo supports an optional semantic branch for Chapter 4.
+
+- Detailed semantic prior file specification: `docs/semantic_priors.md`
+- Suggested storage location: `semantic_priors/`
+
+Quick example:
+```bash
+python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
+  --use_semantic_branch True \
+  --semantic_path ./semantic_priors/Houston_semantic.npy
+```
+
+If `--semantic_path` is empty or file missing, code uses one-hot semantic priors as fallback.
+
+
+### Build semantic priors (Chapter 4)
+Use the provided builder script to generate hierarchical semantic priors:
+
+```bash
+python semantic_priors/scripts/build_semantic_priors.py   --config semantic_priors/examples/houston_semantic_builder.yaml
+```
+
+Then train with the generated combined bank:
+
+```bash
+python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48   --use_semantic_branch True   --semantic_path ./semantic_priors/Houston/semantic_bank_combined.npy
+```
+
+See `docs/semantic_priors.md` for full details.
