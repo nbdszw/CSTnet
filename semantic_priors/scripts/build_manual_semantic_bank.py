@@ -51,7 +51,7 @@ def encode_texts_clip(
     """Encode texts with CLIP text encoder (transformers backend)."""
     try:
         import torch
-        from transformers import AutoTokenizer, CLIPTextModel
+        from transformers import AutoTokenizer, CLIPModel
     except Exception as e:
         raise ImportError(
             "CLIP encoding requires torch + transformers. "
@@ -59,8 +59,8 @@ def encode_texts_clip(
         ) from e
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    text_model = CLIPTextModel.from_pretrained(model_name).to(device)
-    text_model.eval()
+    clip_model = CLIPModel.from_pretrained(model_name).to(device)
+    clip_model.eval()
 
     all_vec = []
     bs = 32
@@ -69,12 +69,8 @@ def encode_texts_clip(
             batch = texts[i : i + bs]
             token = tokenizer(batch, padding=True, truncation=True, return_tensors="pt")
             token = {k: v.to(device) for k, v in token.items()}
-            out = text_model(**token)
-            # mean pooling over valid tokens
-            hidden = out.last_hidden_state  # [B, T, D]
-            mask = token["attention_mask"].unsqueeze(-1).float()
-            pooled = (hidden * mask).sum(dim=1) / torch.clamp(mask.sum(dim=1), min=1.0)
-            all_vec.append(pooled.cpu().numpy())
+            text_feat = clip_model.get_text_features(**token)
+            all_vec.append(text_feat.cpu().numpy())
 
     z = np.concatenate(all_vec, axis=0).astype(np.float32)
     z = l2_normalize(z)
