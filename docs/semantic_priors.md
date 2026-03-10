@@ -1,60 +1,76 @@
-# Semantic Prior Construction and File Specification (Chapter 4)
+# 第四章语义先验构建与文件规范（中文）
 
-This document explains **how to construct** and **how to use** semantic priors for Chapter 4.
+本文档说明两件事：
+1. **如何构建**语义先验（LLM 生成 + 聚合 + 编码 + 置信度）
+2. **如何接入**当前训练代码（`semantic_loader.py`）
 
-## 1) What is implemented in code
+---
 
-We provide a full pipeline script:
+## 1. 代码中已实现的构建流程
+
+仓库提供了完整构建脚本：
 
 - `semantic_priors/scripts/build_semantic_priors.py`
 
-It implements:
+该脚本实现了如下流程：
 
-1. hierarchical text generation
-   - coarse (scene-invariant): \(T_i^{(c)}\)
-   - fine-source/fine-target (scene-aware): \(T_{i,src}^{(f)}, T_{i,tgt}^{(f)}\)
-2. multi-generation with K candidates per class/level
-3. rule-based aggregation with stability threshold \(\rho\)
-4. text embedding + L2 normalization
-5. consistency-based confidence weights
-6. export prototype banks (`.npy`) + metadata (`.json`)
+1. 层次化语义生成：
+   - 粗粒度（跨场景稳定语义）\(T_i^{(c)}\)
+   - 细粒度（场景条件语义）\(T_{i,src}^{(f)}, T_{i,tgt}^{(f)}\)
+2. 每类每层级进行 `K` 次生成
+3. 基于稳定阈值 \(\rho\) 的规则化聚合
+4. 文本编码与 \(\ell_2\) 归一化
+5. 基于多次生成一致性的置信度估计
+6. 导出语义原型库（`.npy`）与元数据（`.json`）
 
-The script supports two generation backends:
+支持两种生成后端：
 
-- `template` (offline deterministic fallback)
-- `openai` (OpenAI-compatible chat-completions endpoint)
+- `template`：离线模板生成（无 API 依赖，便于复现）
+- `openai`：OpenAI 兼容接口（`/v1/chat/completions`）
+
+> 当场景元信息缺失时，建议显式填 `unknown`，避免臆造先验。
 
 ---
 
-## 2) Input config format
+## 2. 输入配置（YAML）说明
 
-Use a YAML config (example: `semantic_priors/examples/houston_semantic_builder.yaml`).
+示例文件：`semantic_priors/examples/houston_semantic_builder.yaml`
 
-Required fields:
+核心字段：
 
-- `dataset`: dataset name
-- `classes`: list of class specs (`id`, `name`, optional `alias`, optional `definition`)
-- `scene_info`: source/target scene metadata with keys:
+- `dataset`：数据集名
+- `classes`：类别列表，每个类别建议包含：
+  - `id`（必须，建议从 0 连续）
+  - `name`（必须）
+  - `alias`（可选）
+  - `definition`（可选但推荐）
+- `scene_info`：源域/目标域场景信息，建议包含：
   - `sensor`, `season`, `region`, `resolution`, `illumination`
 
-Unknown values should be set to `unknown` (do not hallucinate missing metadata).
+其余关键超参：
+
+- `generation.k`：每类每层级生成次数
+- `generation.rho`：稳定语义单元保留阈值
+- `encoding.dim`：导出语义向量维度
+- `confidence.eps`：置信度下界
+- `output.merge_mode`：原型融合方式
 
 ---
 
-## 3) Run semantic-prior construction
+## 3. 构建命令
 
-### 3.1 Offline template backend
+### 3.1 模板后端（推荐先跑通）
 
 ```bash
 python semantic_priors/scripts/build_semantic_priors.py \
   --config semantic_priors/examples/houston_semantic_builder.yaml
 ```
 
-### 3.2 OpenAI-compatible backend
+### 3.2 OpenAI 兼容后端
 
-1. set `generation.backend: openai` in config
-2. set API key env var (default `OPENAI_API_KEY`)
-3. run the same command
+1. 将配置中的 `generation.backend` 设为 `openai`
+2. 设置 API Key（默认读 `OPENAI_API_KEY`）
+3. 执行同一命令
 
 ```bash
 export OPENAI_API_KEY="<your_key>"
@@ -64,34 +80,34 @@ python semantic_priors/scripts/build_semantic_priors.py \
 
 ---
 
-## 4) Output files and meanings
+## 4. 输出文件说明
 
-Suppose `output_dir: semantic_priors/Houston`, generated files include:
+若 `output_dir: semantic_priors/Houston`，会生成：
 
-- `semantic_bank_coarse.npy`: \(\mathbf{P}_c\), shape `[C, d_s]`
-- `semantic_bank_fine_src.npy`: \(\mathbf{P}_f^{(src)}\), shape `[C, d_s]`
-- `semantic_bank_fine_tgt.npy`: \(\mathbf{P}_f^{(tgt)}\), shape `[C, d_s]`
-- `semantic_bank_combined.npy`: merged bank for current training code (recommended)
-- `semantic_weights_coarse.npy`: \(w_i^{(c)}\), shape `[C]`
-- `semantic_weights_fine_src.npy`: \(w_i^{(f,src)}\), shape `[C]`
-- `semantic_weights_fine_tgt.npy`: \(w_i^{(f,tgt)}\), shape `[C]`
-- `semantic_metadata.json`: generated texts, confidence, config snapshot
+- `semantic_bank_coarse.npy`：粗粒度原型库 \(\mathbf{P}_c\)，形状 `[C, d_s]`
+- `semantic_bank_fine_src.npy`：源域细粒度原型库 \(\mathbf{P}_f^{(src)}\)，形状 `[C, d_s]`
+- `semantic_bank_fine_tgt.npy`：目标域细粒度原型库 \(\mathbf{P}_f^{(tgt)}\)，形状 `[C, d_s]`
+- `semantic_bank_combined.npy`：融合原型库（当前训练代码推荐直接使用）
+- `semantic_weights_coarse.npy`：粗粒度置信权重 `[C]`
+- `semantic_weights_fine_src.npy`：源域细粒度置信权重 `[C]`
+- `semantic_weights_fine_tgt.npy`：目标域细粒度置信权重 `[C]`
+- `semantic_metadata.json`：文本、权重、配置快照等元信息
 
 ---
 
-## 5) File format constraints for training
+## 5. 与训练代码对接
 
-Current training code (`semantic_loader.py`) accepts:
+当前训练加载器 `semantic_loader.py` 支持：
 
-- `.npy`: `[num_class, d_sem]`
-- `.pt/.pth`: tensor or dict key `embeddings`
-- `.json`: list or dict key `embeddings`
+- `.npy`：`[num_class, d_sem]`
+- `.pt/.pth`：tensor 或 `{"embeddings": tensor}`
+- `.json`：list 或 `{"embeddings": list}`
 
-For Chapter 4 training, you can directly use:
+第四章训练建议直接使用：
 
 - `semantic_bank_combined.npy`
 
-Example:
+示例命令：
 
 ```bash
 python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
@@ -101,27 +117,27 @@ python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
 
 ---
 
-## 6) Class-order alignment (IMPORTANT)
+## 6. 类别顺序对齐（非常重要）
 
-Rows must align with model class ids:
+语义矩阵的**第 i 行必须对应训练标签中的 class id=i**。
 
-- row `i` corresponds to class id `i`
-- `num_class` must match training dataloader output classes
+- 行索引与标签 id 不一致会导致语义错配
+- `num_class` 必须与训练时类别数一致
 
-A mismatch will cause semantic misalignment and degrade training.
+建议：先确认 dataloader 的类别编码，再准备 `classes.id` 与原型行顺序。
 
 ---
 
-## 7) Suggested ablations
+## 7. 消融建议
 
-- baseline (Chapter 3): `use_semantic_branch=False`
-- +source alignment only: `use_semantic_branch=True`, `semantic_tgt_weight=0`
-- +target consistency only: `use_semantic_branch=True`, `semantic_src_weight=0`
-- full Chapter 4: both source and target semantic weights > 0
+- 第三章基线：`use_semantic_branch=False`
+- 仅源域语义对齐：`use_semantic_branch=True, semantic_tgt_weight=0`
+- 仅目标域一致性：`use_semantic_branch=True, semantic_src_weight=0`
+- 第四章完整：`semantic_src_weight>0` 且 `semantic_tgt_weight>0`
 
-You can also swap prior variants:
+语义先验层级也可做消融：
 
-- coarse only: use `semantic_bank_coarse.npy`
-- fine src only: use `semantic_bank_fine_src.npy`
-- fine tgt only: use `semantic_bank_fine_tgt.npy`
-- combined: use `semantic_bank_combined.npy`
+- 仅粗粒度：`semantic_bank_coarse.npy`
+- 仅源域细粒度：`semantic_bank_fine_src.npy`
+- 仅目标域细粒度：`semantic_bank_fine_tgt.npy`
+- 融合：`semantic_bank_combined.npy`

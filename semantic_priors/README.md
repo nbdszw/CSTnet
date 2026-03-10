@@ -1,14 +1,14 @@
-This folder stores semantic prior assets for Chapter 4.
+该目录用于存放第四章语义先验相关资源。
 
-## Recommended structure
-- `scripts/build_semantic_priors.py`: builder pipeline
-- `examples/*.yaml`: builder config examples
-- `<Dataset>/semantic_bank_*.npy`: generated semantic banks
+## 推荐目录结构
+- `scripts/build_semantic_priors.py`：语义先验构建脚本
+- `examples/*.yaml`：构建配置示例
+- `<Dataset>/semantic_bank_*.npy`：构建产出的语义原型库
 
-## Quick start
+## 快速开始
 ```bash
 python semantic_priors/scripts/build_semantic_priors.py \
   --config semantic_priors/examples/houston_semantic_builder.yaml
 ```
 
-Detailed spec and integration guide: `docs/semantic_priors.md`.
+完整说明请见：`docs/semantic_priors.md`。
