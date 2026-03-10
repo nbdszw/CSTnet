@@ -131,11 +131,14 @@ class NewTransferNet(nn.Module):
         target_x_IN_3, target_x_3, target_x_style_3a = self.base_network(target)
 
         if self.use_bottleneck:
-            source = self.bottleneck_layer(source_outputs)
-            target = self.bottleneck_layer(target_outputs)
+            source_feat = self.bottleneck_layer(source_outputs)
+            target_feat = self.bottleneck_layer(target_outputs)
+        else:
+            source_feat = source_outputs
+            target_feat = target_outputs
 
         # classification loss
-        source_clf = self.classifier_layer(source)
+        source_clf = self.classifier_layer(source_feat)
         clf_loss = self.criterion(source_clf, source_label)
 
         # dis_loss
@@ -159,21 +162,22 @@ class NewTransferNet(nn.Module):
         kwargs = {}
         if self.transfer_loss == 'lmmd':
             kwargs['source_label'] = source_label
-            target_clf = self.classifier_layer(target)
+            target_clf = self.classifier_layer(target_feat)
             kwargs['target_logits'] = torch.nn.functional.softmax(target_clf, dim=1)
         elif self.transfer_loss == 'daan':
-            source_clf = self.classifier_layer(source)
+            source_clf = self.classifier_layer(source_feat)
             kwargs['source_logits'] = torch.nn.functional.softmax(source_clf, dim=1)
-            target_clf = self.classifier_layer(target)
+            target_clf = self.classifier_layer(target_feat)
             kwargs['target_logits'] = torch.nn.functional.softmax(target_clf, dim=1)
         elif self.transfer_loss == 'bnm':
-            target_clf = self.classifier_layer(target)
-            target = nn.Softmax(dim=1)(target_clf)
+            target_clf = self.classifier_layer(target_feat)
+            target_prob = nn.Softmax(dim=1)(target_clf)
         else:
-            target_clf = self.classifier_layer(target)
+            target_clf = self.classifier_layer(target_feat)
 
-        transfer_loss = self.adapt_loss(source, target, **kwargs)
-        semantic_metrics = self._semantic_forward(source, target, source_label, target_clf)
+        transfer_target = target_prob if self.transfer_loss == 'bnm' else target_feat
+        transfer_loss = self.adapt_loss(source_feat, transfer_target, **kwargs)
+        semantic_metrics = self._semantic_forward(source_feat, target_feat, source_label, target_clf)
 
         return clf_loss, dis_loss, transfer_loss, semantic_metrics
 
