@@ -154,13 +154,20 @@ def test(model, target_test_loader, args):
             
     acc = 100. * correct / len_target_dataset
     
-    # Calculate per-class accuracy
-    conf_mat = confusion_matrix(all_targets, all_preds)
-    per_class_acc = np.diag(conf_mat) / np.sum(conf_mat, axis=1)
-    
+    # Calculate per-class accuracy (robust to classes with zero test samples)
+    conf_mat = confusion_matrix(all_targets, all_preds, labels=np.arange(args.n_class))
+    class_totals = np.sum(conf_mat, axis=1)
+    per_class_acc = np.divide(
+        np.diag(conf_mat),
+        class_totals,
+        out=np.zeros_like(class_totals, dtype=float),
+        where=class_totals != 0,
+    )
+
     # Calculate OA, AA, and Kappa
     oa = accuracy_score(all_targets, all_preds)
-    aa = np.mean(per_class_acc)
+    valid_mask = class_totals != 0
+    aa = np.mean(per_class_acc[valid_mask]) if np.any(valid_mask) else 0.0
     kappa = cohen_kappa_score(all_targets, all_preds)
     
     return acc, test_loss.avg, per_class_acc, oa, aa, kappa, all_features, all_targets
