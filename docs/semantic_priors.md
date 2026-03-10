@@ -151,10 +151,18 @@ python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
 
 ## 8. 不接入 LLM 的“手工语义文本”测试（推荐快速验证）
 
-如果你已经有论文表格中的类别语义文本（coarse/fine），可直接使用以下脚本构建语义先验，不需要任何 LLM API：
+如果你已经有论文表格中的类别语义文本（coarse/fine），可直接使用以下脚本构建语义先验，不需要任何 LLM API。
+
+该脚本默认支持 **CLIP 文本编码**（`encoding_backend: clip`），也可切换到 `tfidf` 作为无深度模型兜底。
 
 - 脚本：`semantic_priors/scripts/build_manual_semantic_bank.py`
 - 示例配置：`semantic_priors/examples/pavia_manual_semantics.yaml`
+
+配置要点（以 `pavia_manual_semantics.yaml` 为例）：
+- `encoding_backend: clip`
+- `clip_model_name: openai/clip-vit-base-patch32`
+- `clip_device: cpu` 或 `cuda`
+- `encoding_dim: 512`
 
 构建命令：
 

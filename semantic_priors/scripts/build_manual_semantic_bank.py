@@ -14,7 +14,18 @@ def l2_normalize(x: np.ndarray, eps: float = 1e-12) -> np.ndarray:
     return x / np.clip(norm, eps, None)
 
 
-def encode_texts(texts: List[str], dim: int = 256) -> np.ndarray:
+def _fit_to_dim(z: np.ndarray, dim: int) -> np.ndarray:
+    """Project/pad vectors to target dim while keeping deterministic behavior."""
+    z = z.astype(np.float32)
+    if z.shape[1] < dim:
+        pad = np.zeros((z.shape[0], dim - z.shape[1]), dtype=np.float32)
+        z = np.concatenate([z, pad], axis=1)
+    else:
+        z = z[:, :dim]
+    return l2_normalize(z)
+
+
+def encode_texts_tfidf(texts: List[str], dim: int = 256) -> np.ndarray:
     tfidf = TfidfVectorizer(max_features=max(1024, dim * 8), ngram_range=(1, 2))
     x = tfidf.fit_transform(texts)
 
@@ -28,14 +39,46 @@ def encode_texts(texts: List[str], dim: int = 256) -> np.ndarray:
     else:
         z = x.toarray()
 
-    z = z.astype(np.float32)
-    if z.shape[1] < dim:
-        pad = np.zeros((z.shape[0], dim - z.shape[1]), dtype=np.float32)
-        z = np.concatenate([z, pad], axis=1)
-    else:
-        z = z[:, :dim]
+    return _fit_to_dim(z, dim=dim)
 
-    return l2_normalize(z)
+
+def encode_texts_clip(
+    texts: List[str],
+    dim: int = 512,
+    model_name: str = "openai/clip-vit-base-patch32",
+    device: str = "cpu",
+) -> np.ndarray:
+    """Encode texts with CLIP text encoder (transformers backend)."""
+    try:
+        import torch
+        from transformers import AutoTokenizer, CLIPTextModel
+    except Exception as e:
+        raise ImportError(
+            "CLIP encoding requires torch + transformers. "
+            "Install them or switch encoding_backend to 'tfidf'."
+        ) from e
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    text_model = CLIPTextModel.from_pretrained(model_name).to(device)
+    text_model.eval()
+
+    all_vec = []
+    bs = 32
+    with torch.no_grad():
+        for i in range(0, len(texts), bs):
+            batch = texts[i : i + bs]
+            token = tokenizer(batch, padding=True, truncation=True, return_tensors="pt")
+            token = {k: v.to(device) for k, v in token.items()}
+            out = text_model(**token)
+            # mean pooling over valid tokens
+            hidden = out.last_hidden_state  # [B, T, D]
+            mask = token["attention_mask"].unsqueeze(-1).float()
+            pooled = (hidden * mask).sum(dim=1) / torch.clamp(mask.sum(dim=1), min=1.0)
+            all_vec.append(pooled.cpu().numpy())
+
+    z = np.concatenate(all_vec, axis=0).astype(np.float32)
+    z = l2_normalize(z)
+    return _fit_to_dim(z, dim=dim)
 
 
 def parse_args():
@@ -51,15 +94,24 @@ def main():
 
     dataset = cfg['dataset']
     out_dir = cfg.get('output_dir', f'semantic_priors/{dataset}')
-    dim = int(cfg.get('encoding_dim', 256))
+    dim = int(cfg.get('encoding_dim', 512))
     merge_mode = cfg.get('merge_mode', 'concat')  # concat | coarse_only | fine_only
+    encoding_backend = cfg.get('encoding_backend', 'clip')  # clip | tfidf
+    clip_model_name = cfg.get('clip_model_name', 'openai/clip-vit-base-patch32')
+    clip_device = cfg.get('clip_device', 'cpu')
 
     classes = sorted(cfg['classes'], key=lambda x: int(x['id']))
     coarse = [c['coarse'] for c in classes]
     fine = [c['fine'] for c in classes]
 
-    emb_coarse = encode_texts(coarse, dim=dim)
-    emb_fine = encode_texts(fine, dim=dim)
+    if encoding_backend == 'clip':
+        emb_coarse = encode_texts_clip(coarse, dim=dim, model_name=clip_model_name, device=clip_device)
+        emb_fine = encode_texts_clip(fine, dim=dim, model_name=clip_model_name, device=clip_device)
+    elif encoding_backend == 'tfidf':
+        emb_coarse = encode_texts_tfidf(coarse, dim=dim)
+        emb_fine = encode_texts_tfidf(fine, dim=dim)
+    else:
+        raise ValueError(f'Unsupported encoding_backend: {encoding_backend}')
 
     if merge_mode == 'coarse_only':
         emb_combined = emb_coarse
@@ -78,6 +130,8 @@ def main():
 
     meta = {
         'dataset': dataset,
+        'encoding_backend': encoding_backend,
+        'clip_model_name': clip_model_name if encoding_backend == 'clip' else None,
         'encoding_dim': dim,
         'merge_mode': merge_mode,
         'num_classes': len(classes),
@@ -92,6 +146,7 @@ def main():
         json.dump(meta, f, ensure_ascii=False, indent=2)
 
     print(f'[Done] Manual semantic banks saved to: {out_dir}')
+    print(f'- backend: {encoding_backend}')
     print('- manual_semantic_bank_combined.npy (recommended for training)')
 
 

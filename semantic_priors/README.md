@@ -20,3 +20,6 @@ python semantic_priors/scripts/build_semantic_priors.py \
 ```bash
 python semantic_priors/scripts/build_manual_semantic_bank.py   --config semantic_priors/examples/pavia_manual_semantics.yaml
 ```
+
+
+默认推荐在 YAML 中设置 `encoding_backend: clip` 使用 CLIP 文本编码；若环境缺依赖可改为 `tfidf`。

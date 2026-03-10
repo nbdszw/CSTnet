@@ -1,6 +1,9 @@
 dataset: Pavia
 output_dir: semantic_priors/Pavia
-encoding_dim: 256
+encoding_backend: clip  # clip | tfidf
+clip_model_name: openai/clip-vit-base-patch32
+clip_device: cpu
+encoding_dim: 512
 merge_mode: concat
 
 classes:

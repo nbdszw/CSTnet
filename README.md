@@ -115,7 +115,7 @@ python main.py --config param.yaml --data_dir ./Dataset/Houston --num_bands 48 \
 
 
 ### 不接入 LLM，直接用论文语义描述做测试
-如果你已经有类别 coarse/fine 语义文本（如 Pavia 表格），可直接构建本地语义先验：
+如果你已经有类别 coarse/fine 语义文本（如 Pavia 表格），可直接构建本地语义先验（默认使用 CLIP 文本编码）：
 
 ```bash
 python semantic_priors/scripts/build_manual_semantic_bank.py   --config semantic_priors/examples/pavia_manual_semantics.yaml
