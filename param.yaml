@@ -25,11 +25,17 @@ semantic_path: ''
 semantic_dim: 0
 shared_dim: 128
 semantic_hidden_dim: 0
-semantic_conf_threshold: 0.9
+semantic_conf_threshold: 0.95
 semantic_metric: cosine
+semantic_logit_scale: 8
 semantic_normalize: True
-semantic_loss_weight: 1.0
+semantic_loss_weight: 0.02
 semantic_src_weight: 1.0
-semantic_tgt_weight: 1.0
+semantic_tgt_weight: 0.1
 
-semantic_tgt_warmup_epochs: 5
+semantic_tgt_warmup_epochs: 20
+semantic_margin_threshold: 0.1
+semantic_decay_power: 1.5
+semantic_tgt_ramp_power: 2.0
+semantic_beta: 0.5
+debug_semantic: False

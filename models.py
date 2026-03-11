@@ -4,7 +4,7 @@ import torch.nn as nn
 import backbones
 from semantic_loader import load_semantic_embeddings
 from semantic_modules import ProjectionHead
-from semantic_losses import source_semantic_alignment_loss, target_semantic_consistency_loss
+from semantic_losses import semantic_logits, source_semantic_alignment_loss, target_semantic_consistency_loss
 from transfer_losses import TransferLoss
 
 
@@ -25,10 +25,17 @@ class NewTransferNet(nn.Module):
         semantic_hidden_dim=0,
         semantic_conf_threshold=0.9,
         semantic_metric='cosine',
+        semantic_logit_scale=16.0,
         semantic_normalize=True,
         semantic_src_weight=1.0,
         semantic_tgt_weight=1.0,
         semantic_tgt_warmup_epochs=0,
+        semantic_margin_threshold=0.05,
+        semantic_decay_power=1.0,
+        semantic_tgt_ramp_power=1.0,
+        semantic_beta=0.5,
+        n_epoch=100,
+        debug_semantic=False,
         **kwargs,
     ):
         super(NewTransferNet, self).__init__()
@@ -61,9 +68,16 @@ class NewTransferNet(nn.Module):
         self.use_semantic_branch = use_semantic_branch
         self.semantic_conf_threshold = semantic_conf_threshold
         self.semantic_metric = semantic_metric
+        self.semantic_logit_scale = semantic_logit_scale
         self.semantic_src_weight = semantic_src_weight
         self.semantic_tgt_weight = semantic_tgt_weight
         self.semantic_tgt_warmup_epochs = semantic_tgt_warmup_epochs
+        self.semantic_margin_threshold = semantic_margin_threshold
+        self.semantic_decay_power = semantic_decay_power
+        self.semantic_tgt_ramp_power = semantic_tgt_ramp_power
+        self.semantic_beta = semantic_beta
+        self.n_epoch = max(1, n_epoch)
+        self.debug_semantic = debug_semantic
 
         self.visual_projector = None
         self.semantic_projector = None
@@ -80,10 +94,40 @@ class NewTransferNet(nn.Module):
                     f'semantic_dim mismatch: expected {semantic_dim}, got {semantic_bank.shape[1]} from semantic bank'
                 )
             semantic_dim = semantic_bank.shape[1]
-            self.register_buffer('semantic_bank', semantic_bank)
+            self.register_buffer('semantic_bank_coarse', semantic_bank)
+            self.register_buffer('semantic_bank_fine', semantic_bank)
 
             self.visual_projector = ProjectionHead(feature_dim, shared_dim, hidden_dim=semantic_hidden_dim)
             self.semantic_projector = ProjectionHead(semantic_dim, shared_dim, hidden_dim=semantic_hidden_dim)
+
+    def _source_label_and_bank(self, source_label, projected_bank):
+        if source_label.min().item() >= 1 and projected_bank.shape[0] > 1:
+            aligned_labels = source_label - 1
+            bank = projected_bank[1:]
+            if aligned_labels.max().item() >= bank.shape[0]:
+                raise ValueError(
+                    f"Source label/prototype mismatch after background shift: "
+                    f"max(label-1)={aligned_labels.max().item()}, prototypes={bank.shape[0]}"
+                )
+            return aligned_labels, bank
+
+        if source_label.max().item() >= projected_bank.shape[0]:
+            raise ValueError(
+                f"Source label/prototype mismatch: max(label)={source_label.max().item()}, "
+                f"prototypes={projected_bank.shape[0]}"
+            )
+        return source_label, projected_bank
+
+    def _semantic_decay(self, epoch):
+        progress = min(max((epoch - 1) / max(1, self.n_epoch - 1), 0.0), 1.0)
+        return (1.0 - progress) ** self.semantic_decay_power
+
+    def _target_ramp(self, epoch):
+        if epoch <= self.semantic_tgt_warmup_epochs:
+            return 0.0
+        remain = max(1, self.n_epoch - self.semantic_tgt_warmup_epochs)
+        progress = min(max((epoch - self.semantic_tgt_warmup_epochs) / remain, 0.0), 1.0)
+        return progress ** self.semantic_tgt_ramp_power
 
     def _semantic_forward(self, source_feat, target_feat, source_label, target_clf, epoch=1):
         zero = torch.tensor(0.0, device=source_feat.device)
@@ -92,47 +136,110 @@ class NewTransferNet(nn.Module):
             'sem_src_loss': zero,
             'sem_tgt_loss': zero,
             'sem_valid_ratio': zero,
+            'sem_conf_pass_ratio': zero,
+            'sem_margin_pass_ratio': zero,
+            'sem_src_coarse_loss': zero,
+            'sem_src_fine_loss': zero,
+            'lambda_sem_t': zero,
+            'lambda_sem_tgt': zero,
+            'source_coarse_sem_logits_shape': 'N/A',
+            'source_fine_sem_logits_shape': 'N/A',
         }
         if not self.use_semantic_branch:
             return metrics
 
-        zv_source = self.visual_projector(source_feat)
-        zv_target = self.visual_projector(target_feat)
-        zs = self.semantic_projector(self.semantic_bank)
+        main_source_feat = source_feat
+        main_target_feat = target_feat
 
-        # Ignore background prototype (index 0) in semantic alignment if source labels are foreground-only (>=1)
-        if source_label.min().item() >= 1 and zs.shape[0] > 1:
-            sem_src_loss = source_semantic_alignment_loss(
-                zv_source,
-                source_label - 1,
-                zs[1:],
-                metric=self.semantic_metric,
-            )
-        else:
-            sem_src_loss = source_semantic_alignment_loss(
-                zv_source,
-                source_label,
-                zs,
-                metric=self.semantic_metric,
-            )
+        zv_source = self.visual_projector(main_source_feat)
+        zv_target = self.visual_projector(main_target_feat)
+        zs_coarse = self.semantic_projector(self.semantic_bank_coarse)
+        zs_fine = self.semantic_projector(self.semantic_bank_fine)
 
-        if epoch <= self.semantic_tgt_warmup_epochs:
-            sem_tgt_loss = torch.tensor(0.0, device=source_feat.device)
-            sem_valid_ratio = torch.tensor(0.0, device=source_feat.device)
-        else:
-            sem_tgt_loss, sem_valid_ratio = target_semantic_consistency_loss(
-                zv_target,
+        src_labels_coarse, zs_coarse_aligned = self._source_label_and_bank(source_label, zs_coarse)
+        src_labels_fine, zs_fine_aligned = self._source_label_and_bank(source_label, zs_fine)
+
+        coarse_sem_logits = semantic_logits(
+            zv_source,
+            zs_coarse_aligned,
+            metric=self.semantic_metric,
+            logit_scale=self.semantic_logit_scale,
+        )
+        fine_sem_logits = semantic_logits(
+            zv_source,
+            zs_fine_aligned,
+            metric=self.semantic_metric,
+            logit_scale=self.semantic_logit_scale,
+        )
+
+        sem_src_coarse = source_semantic_alignment_loss(
+            zv_source,
+            src_labels_coarse,
+            zs_coarse_aligned,
+            metric=self.semantic_metric,
+            logit_scale=self.semantic_logit_scale,
+        )
+        sem_src_fine = source_semantic_alignment_loss(
+            zv_source,
+            src_labels_fine,
+            zs_fine_aligned,
+            metric=self.semantic_metric,
+            logit_scale=self.semantic_logit_scale,
+        )
+        sem_src_loss = (1.0 - self.semantic_beta) * sem_src_coarse + self.semantic_beta * sem_src_fine
+
+        tgt_sem_logits = semantic_logits(
+            zv_target,
+            zs_fine,
+            metric=self.semantic_metric,
+            logit_scale=self.semantic_logit_scale,
+        )
+
+        sem_tgt_loss = zero
+        sem_conf_pass_ratio = zero
+        sem_margin_pass_ratio = zero
+        sem_valid_ratio = zero
+        if epoch > self.semantic_tgt_warmup_epochs:
+            sem_tgt_loss, sem_conf_pass_ratio, sem_margin_pass_ratio, sem_valid_ratio = target_semantic_consistency_loss(
                 target_clf,
-                zs,
+                tgt_sem_logits,
                 conf_threshold=self.semantic_conf_threshold,
-                metric=self.semantic_metric,
+                margin_threshold=self.semantic_margin_threshold,
             )
 
-        sem_loss = self.semantic_src_weight * sem_src_loss + self.semantic_tgt_weight * sem_tgt_loss
+        lambda_sem_t = torch.tensor(self._semantic_decay(epoch), device=source_feat.device)
+        lambda_sem_tgt = torch.tensor(
+            min(self._target_ramp(epoch), self._semantic_decay(epoch)),
+            device=source_feat.device,
+        )
+
+        sem_loss = (
+            self.semantic_src_weight * lambda_sem_t * sem_src_loss
+            + self.semantic_tgt_weight * lambda_sem_tgt * sem_tgt_loss
+        )
         metrics['sem_loss'] = sem_loss
         metrics['sem_src_loss'] = sem_src_loss
         metrics['sem_tgt_loss'] = sem_tgt_loss
         metrics['sem_valid_ratio'] = sem_valid_ratio
+        metrics['sem_conf_pass_ratio'] = sem_conf_pass_ratio
+        metrics['sem_margin_pass_ratio'] = sem_margin_pass_ratio
+        metrics['sem_src_coarse_loss'] = sem_src_coarse
+        metrics['sem_src_fine_loss'] = sem_src_fine
+        metrics['lambda_sem_t'] = lambda_sem_t
+        metrics['lambda_sem_tgt'] = lambda_sem_tgt
+        metrics['source_coarse_sem_logits_shape'] = tuple(coarse_sem_logits.shape)
+        metrics['source_fine_sem_logits_shape'] = tuple(fine_sem_logits.shape)
+
+        if self.debug_semantic:
+            print(
+                f"[semantic][epoch {epoch}] src coarse_logits={tuple(coarse_sem_logits.shape)} "
+                f"fine_logits={tuple(fine_sem_logits.shape)} sem_src_coarse={sem_src_coarse.item():.4f} "
+                f"sem_src_fine={sem_src_fine.item():.4f} sem_src={sem_src_loss.item():.4f} "
+                f"conf_ratio={sem_conf_pass_ratio.item():.4f} margin_ratio={sem_margin_pass_ratio.item():.4f} "
+                f"tgt_ratio={sem_valid_ratio.item():.4f} lambda_sem_t={lambda_sem_t.item():.4f} "
+                f"lambda_sem_tgt={lambda_sem_tgt.item():.4f}"
+            )
+
         return metrics
 
     def forward(self, source, target, source_label, epoch=1):
