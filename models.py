@@ -129,7 +129,7 @@ class NewTransferNet(nn.Module):
         progress = min(max((epoch - self.semantic_tgt_warmup_epochs) / remain, 0.0), 1.0)
         return progress ** self.semantic_tgt_ramp_power
 
-    def _semantic_forward(self, source_feat, target_feat, source_label, target_clf, epoch=1):
+    def _semantic_forward(self, source_feat, target_feat, source_label, target_clf, epoch=1, semantic_enabled=True):
         zero = torch.tensor(0.0, device=source_feat.device)
         metrics = {
             'sem_loss': zero,
@@ -145,7 +145,7 @@ class NewTransferNet(nn.Module):
             'source_coarse_sem_logits_shape': 'N/A',
             'source_fine_sem_logits_shape': 'N/A',
         }
-        if not self.use_semantic_branch:
+        if (not self.use_semantic_branch) or (not semantic_enabled):
             return metrics
 
         main_source_feat = source_feat
@@ -242,7 +242,7 @@ class NewTransferNet(nn.Module):
 
         return metrics
 
-    def forward(self, source, target, source_label, epoch=1):
+    def forward(self, source, target, source_label, epoch=1, semantic_enabled=True):
         source_outputs, \
         source_x_IN_1, source_x_1, source_x_style_1a, \
         source_x_IN_2, source_x_2, source_x_style_2a, \
@@ -300,7 +300,14 @@ class NewTransferNet(nn.Module):
 
         transfer_target = target_prob if self.transfer_loss == 'bnm' else target_feat
         transfer_loss = self.adapt_loss(source_feat, transfer_target, **kwargs)
-        semantic_metrics = self._semantic_forward(source_feat, target_feat, source_label, target_clf, epoch=epoch)
+        semantic_metrics = self._semantic_forward(
+            source_feat,
+            target_feat,
+            source_label,
+            target_clf,
+            epoch=epoch,
+            semantic_enabled=semantic_enabled,
+        )
 
         return clf_loss, dis_loss, transfer_loss, semantic_metrics
 

@@ -205,6 +205,8 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
     def get_semantic_weight(epoch, lambda_sem_max, start_epoch, ramp_end_epoch):
         if epoch < start_epoch:
             return 0.0
+        if ramp_end_epoch <= start_epoch:
+            return lambda_sem_max
         if epoch < ramp_end_epoch:
             return lambda_sem_max * (epoch - start_epoch) / float(ramp_end_epoch - start_epoch)
         return lambda_sem_max
@@ -263,6 +265,7 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
             args.semantic_start_epoch,
             args.semantic_ramp_end_epoch,
         )
+        semantic_enabled = model.use_semantic_branch and (lambda_sem > 0)
 
         for batch_idx in range(n_batch):
             data_source, label_source = next(iter_source) # .next()
@@ -271,7 +274,13 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
                 args.device), label_source.to(args.device)
             data_target = data_target.to(args.device)
 
-            clf_loss, dis_loss, transfer_loss, semantic_metrics = model(data_source, data_target, label_source, epoch=e)
+            clf_loss, dis_loss, transfer_loss, semantic_metrics = model(
+                data_source,
+                data_target,
+                label_source,
+                epoch=e,
+                semantic_enabled=semantic_enabled,
+            )
             sem_loss_raw = semantic_metrics['sem_loss']
             sem_loss = lambda_sem * sem_loss_raw
             if model.use_semantic_branch and batch_idx == 0 and args.debug_semantic:
@@ -320,8 +329,8 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
             train_loss_total.avg,
         ])
 
-        info = 'Epoch: [{:2d}/{}], cls_loss: {:.4f}, transfer_loss: {:.4f}, dis_loss: {:.4f}, sem_loss: {:.4f}, sem_src: {:.4f}, sem_tgt: {:.4f}, sem_ratio: {:.4f}, sem_conf: {:.4f}, sem_margin: {:.4f}, sem_src_coarse: {:.4f}, sem_src_fine: {:.4f}, lambda_sem_t: {:.4f}, lambda_sem_tgt: {:.4f}, total_Loss: {:.4f}'.format(
-            e, args.n_epoch, train_loss_clf.avg, train_loss_transfer.avg, train_loss_dis.avg, train_loss_sem.avg, train_loss_sem_src.avg, train_loss_sem_tgt.avg, train_sem_valid_ratio.avg, train_sem_conf_ratio.avg, train_sem_margin_ratio.avg, train_sem_src_coarse.avg, train_sem_src_fine.avg, train_lambda_sem.avg, train_lambda_sem_tgt.avg, train_loss_total.avg)
+        info = 'Epoch: [{:2d}/{}], cls_loss: {:.4f}, transfer_loss: {:.4f}, dis_loss: {:.4f}, sem_loss: {:.4f}, sem_src: {:.4f}, sem_tgt: {:.4f}, sem_ratio: {:.4f}, sem_conf: {:.4f}, sem_margin: {:.4f}, sem_src_coarse: {:.4f}, sem_src_fine: {:.4f}, lambda_sem: {:.4f}, lambda_sem_t: {:.4f}, lambda_sem_tgt: {:.4f}, total_Loss: {:.4f}'.format(
+            e, args.n_epoch, train_loss_clf.avg, train_loss_transfer.avg, train_loss_dis.avg, train_loss_sem.avg, train_loss_sem_src.avg, train_loss_sem_tgt.avg, train_sem_valid_ratio.avg, train_sem_conf_ratio.avg, train_sem_margin_ratio.avg, train_sem_src_coarse.avg, train_sem_src_fine.avg, lambda_sem, train_lambda_sem.avg, train_lambda_sem_tgt.avg, train_loss_total.avg)
         # Test
         stop += 1
         test_acc, test_loss, per_class_acc, oa, aa, kappa, all_features, all_targets = test(model, target_test_loader, args)
