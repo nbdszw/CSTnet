@@ -248,7 +248,7 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
             iter_source, iter_target = iter(source_loader), iter(target_train_loader)
 
         criterion = torch.nn.CrossEntropyLoss()
-        for batch_idx in range(n_batch):
+        for _ in range(n_batch):
             data_source, label_source = next(iter_source) # .next()
             data_target, target_label_unused = next(iter_target) # .next()
             data_source, label_source = data_source.to(
