@@ -257,7 +257,14 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
             iter_source, iter_target = iter(source_loader), iter(target_train_loader)
 
         criterion = torch.nn.CrossEntropyLoss()
-        for _ in range(n_batch):
+        lambda_sem = get_semantic_weight(
+            e,
+            args.semantic_loss_weight,
+            args.semantic_start_epoch,
+            args.semantic_ramp_end_epoch,
+        )
+
+        for batch_idx in range(n_batch):
             data_source, label_source = next(iter_source) # .next()
             data_target, target_label_unused = next(iter_target) # .next()
             data_source, label_source = data_source.to(
@@ -265,19 +272,14 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
             data_target = data_target.to(args.device)
 
             clf_loss, dis_loss, transfer_loss, semantic_metrics = model(data_source, data_target, label_source, epoch=e)
-            sem_loss = semantic_metrics['sem_loss']
+            sem_loss_raw = semantic_metrics['sem_loss']
+            sem_loss = lambda_sem * sem_loss_raw
             if model.use_semantic_branch and batch_idx == 0 and args.debug_semantic:
                 print(f"[semantic][epoch {e}] src coarse logits shape: {semantic_metrics['source_coarse_sem_logits_shape']}")
                 print(f"[semantic][epoch {e}] src fine logits shape: {semantic_metrics['source_fine_sem_logits_shape']}")
             loss = clf_loss + args.transfer_loss_weight * transfer_loss + args.dis_loss_weight * dis_loss
             if model.use_semantic_branch:
-                lambda_sem = get_semantic_weight(
-                    e,
-                    args.semantic_loss_weight,
-                    args.semantic_start_epoch,
-                    args.semantic_ramp_end_epoch,
-                )
-                loss = loss + lambda_sem * sem_loss
+                loss = loss + sem_loss
 
             optimizer.zero_grad()
             loss.backward()
