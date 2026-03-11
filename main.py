@@ -70,6 +70,8 @@ def get_parser():
     parser.add_argument('--semantic_logit_scale', type=float, default=16.0)
     parser.add_argument('--semantic_normalize', type=str2bool, default=True)
     parser.add_argument('--semantic_loss_weight', type=float, default=1.0)
+    parser.add_argument('--semantic_start_epoch', type=int, default=40)
+    parser.add_argument('--semantic_ramp_end_epoch', type=int, default=55)
     parser.add_argument('--semantic_src_weight', type=float, default=1.0)
     parser.add_argument('--semantic_tgt_weight', type=float, default=1.0)
     parser.add_argument('--semantic_tgt_warmup_epochs', type=int, default=0)
@@ -200,6 +202,13 @@ def test(model, target_test_loader, args):
     return acc, test_loss.avg, per_class_acc, oa, aa, kappa, all_features, all_targets
 
 def train(source_loader, target_train_loader, target_test_loader, model, optimizer, lr_scheduler, args):
+    def get_semantic_weight(epoch, lambda_sem_max, start_epoch, ramp_end_epoch):
+        if epoch < start_epoch:
+            return 0.0
+        if epoch < ramp_end_epoch:
+            return lambda_sem_max * (epoch - start_epoch) / float(ramp_end_epoch - start_epoch)
+        return lambda_sem_max
+
     start_time = time.time()
     len_source_loader = len(source_loader)
     len_target_loader = len(target_train_loader)
@@ -262,7 +271,13 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
                 print(f"[semantic][epoch {e}] src fine logits shape: {semantic_metrics['source_fine_sem_logits_shape']}")
             loss = clf_loss + args.transfer_loss_weight * transfer_loss + args.dis_loss_weight * dis_loss
             if model.use_semantic_branch:
-                loss = loss + args.semantic_loss_weight * sem_loss
+                lambda_sem = get_semantic_weight(
+                    e,
+                    args.semantic_loss_weight,
+                    args.semantic_start_epoch,
+                    args.semantic_ramp_end_epoch,
+                )
+                loss = loss + lambda_sem * sem_loss
 
             optimizer.zero_grad()
             loss.backward()
