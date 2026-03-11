@@ -1,0 +1,43 @@
+dataset: Pavia
+output_dir: semantic_priors/Pavia
+encoding_backend: clip  # clip | tfidf
+clip_model_name: openai/clip-vit-base-patch32
+clip_device: cpu
+encoding_dim: 512
+merge_mode: concat
+
+classes:
+  - id: 0
+    name: Trees
+    coarse: "A hyperspectral image of trees"
+    fine: "Trees are frequently located along roads or urban green areas. In hyperspectral imagery they usually appear as clustered circular canopy structures."
+
+  - id: 1
+    name: Asphalt
+    coarse: "A hyperspectral image of asphalt roads"
+    fine: "Asphalt roads typically form elongated strip-shaped structures. Vegetation such as trees is often distributed along both sides of the road."
+
+  - id: 2
+    name: Brick
+    coarse: "A hyperspectral image of brick surfaces"
+    fine: "Brick surfaces are commonly used as paving materials. In hyperspectral imagery they often exhibit relatively regular strip-like or block patterns."
+
+  - id: 3
+    name: Bitumen
+    coarse: "A hyperspectral image of bitumen surfaces"
+    fine: "Bitumen is commonly used as a covering material for building surfaces. In hyperspectral imagery it usually forms relatively smooth and homogeneous regions."
+
+  - id: 4
+    name: Shadow
+    coarse: "A hyperspectral image of shadows"
+    fine: "Shadows typically occur near tall structures such as buildings. In hyperspectral imagery shadow regions usually appear very dark due to reduced reflected radiation."
+
+  - id: 5
+    name: Meadow
+    coarse: "A hyperspectral image of meadow"
+    fine: "Meadows are typically covered by grass vegetation. In hyperspectral imagery they often appear as relatively homogeneous green regions."
+
+  - id: 6
+    name: Bare soil
+    coarse: "A hyperspectral image of bare soil"
+    fine: "Bare soil surfaces lack vegetation cover. In hyperspectral imagery they often appear gray or grayish-black with relatively rough textures."
