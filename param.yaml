@@ -30,6 +30,8 @@ semantic_metric: cosine
 semantic_logit_scale: 8
 semantic_normalize: True
 semantic_loss_weight: 0.02
+semantic_start_epoch: 40
+semantic_ramp_end_epoch: 55
 semantic_src_weight: 1.0
 semantic_tgt_weight: 0.1
 
