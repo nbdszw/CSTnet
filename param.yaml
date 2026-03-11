@@ -27,15 +27,9 @@ shared_dim: 128
 semantic_hidden_dim: 0
 semantic_conf_threshold: 0.9
 semantic_metric: cosine
-semantic_logit_scale: 16.0
 semantic_normalize: True
 semantic_loss_weight: 1.0
 semantic_src_weight: 1.0
 semantic_tgt_weight: 1.0
 
 semantic_tgt_warmup_epochs: 5
-semantic_margin_threshold: 0.05
-semantic_decay_power: 1.0
-semantic_tgt_ramp_power: 1.0
-semantic_beta: 0.5
-debug_semantic: False
