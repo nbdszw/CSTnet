@@ -230,16 +230,8 @@ def train(source_loader, target_train_loader, target_test_loader, model, optimiz
 
     
         # early stopping
-
-        if (args.data_dir).split("/")[-1] == 'Pavia':
-            if best_acc > 85:
-                break
-        elif (args.data_dir).split("/")[-1] == 'Houston':
-            if best_acc > 74:
-                break
-        elif (args.data_dir).split("/")[-1] == 'HyRANK':
-            if best_acc > 66:
-                break
+    output_name =  (args.data_dir).split("/")[-1] + "_" + str(args.seed) + "_" + str(args.lr)  + "_" + str(args.transfer_loss_weight) + "_" + str(args.dis_loss_weight) + "_" + str(args.patch_size)
+    torch.save(model.state_dict(), './model/{}.pth'.format(output_name))
 
         
     print('Transfer result: acc: {:.4f}, per_class_acc: {}, oa: {:.4f}, aa: {:.4f}, kappa: {:.4f}'.format(best_acc, best_per_class_acc, best_oa, best_aa, best_kappa))
