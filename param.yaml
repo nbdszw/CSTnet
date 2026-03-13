@@ -1,0 +1,21 @@
+# Backbone
+backbone: rsp_resnet18
+
+transfer_loss: bnm
+
+# Optimizer related
+weight_decay: 5e-4
+lr_scheduler: True
+lr_gamma: 0.0003
+lr_decay: 0.75
+momentum: 0.9
+
+src_domain: Source
+tgt_domain: Target
+num_samples: 100
+
+# Training related
+n_iter_per_epoch: 500
+n_epoch: 100
+num_workers: 10
+
